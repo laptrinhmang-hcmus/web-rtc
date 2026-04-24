@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebRTC Group Call - Mesh</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="join-screen" class="screen active">
+    <div class="card">
+      <h2>WebRTC Call</h2>
+      <div class="form-group">
+        <label>Tên của bạn:</label>
+        <input type="text" id="username" placeholder="Nhập tên..." />
+      </div>
+      <div class="form-group">
+        <label>Mã phòng:</label>
+        <input type="text" id="roomcode" placeholder="Nhập mã phòng..." />
+      </div>
+      <button id="join-btn" class="btn primary-btn" style="width: 100%; margin-bottom: 10px;">Vào phòng (Cần Server)</button>
+      <button id="test-ui-btn" class="btn control-btn" style="width: 100%;">🧪 Test Giao Diện (Offline)</button>
+    </div>
+  </div>
+
+  <div id="call-screen" class="screen">
+    <header class="call-header">
+      <div class="room-info">
+        <h2>Phòng: <span id="current-room"></span></h2>
+      </div>
+      <div class="member-count">Thành viên: <span id="members-count">0</span></div>
+    </header>
+    
+    <main id="video-grid" class="video-grid">
+      <div class="video-wrapper local">
+        <video id="local-video" autoplay playsinline muted></video>
+        <span class="name-badge">Bạn (Local)</span>
+      </div>
+    </main>
+
+    <footer class="call-controls">
+      <button id="start-call-btn" class="btn primary-btn">📞 Bắt đầu gọi</button>
+      <button id="toggle-audio-btn" class="btn control-btn">🎙️ Tắt Mic</button>
+      <button id="toggle-video-btn" class="btn control-btn">📷 Tắt Cam</button>
+      <button id="leave-btn" class="btn danger-btn">❌ Rời phòng</button>
+    </footer>
+  </div>
+
+  <script src="webrtc.js"></script>
+  <script src="ui.js"></script>
+</body>
+</html>
