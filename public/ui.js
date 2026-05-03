@@ -33,6 +33,11 @@ document.getElementById("join-btn").addEventListener("click", async () => {
   const hasMedia = await initLocalMedia();
   if (!hasMedia) return; 
 
+  // Set local stream and room/user info for WebRTC
+  WebRTC.setLocalStream(localStream);
+  WebRTC.setLocalName(currentUser);
+  WebRTC.setRoomId(currentRoom);
+
   // 2. Chuyển UI và mở WebSocket
   document.getElementById("current-room").textContent = currentRoom;
   joinScreen.classList.remove("active");
@@ -42,7 +47,9 @@ document.getElementById("join-btn").addEventListener("click", async () => {
 });
 
 function initWebSocket() {
-  ws = new WebSocket("ws://localhost:3000"); 
+  const wsUrl = (window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + window.location.host;
+  ws = new WebSocket(wsUrl); 
+  WebRTC.setSignalingSocket(ws);
 
   ws.onopen = () => {
     ws.send(JSON.stringify({ type: "register", name: currentUser }));
@@ -50,7 +57,32 @@ function initWebSocket() {
   };
 
   ws.onmessage = (event) => {
-    console.log("Nhận từ Server:", event.data);
+    const data = JSON.parse(event.data);
+    console.log("Nhận từ Server:", data);
+
+    switch (data.type) {
+      case 'roomMembers':
+        roomMembersList = data.members;
+        updateRoomMembers();
+        break;
+      case 'memberLeft':
+        WebRTC.closePeer(data.name);
+        roomMembersList = roomMembersList.filter(name => name !== data.name);
+        updateRoomMembers();
+        break;
+      case 'offer':
+        WebRTC.handleOffer(data);
+        break;
+      case 'answer':
+        WebRTC.handleAnswer(data);
+        break;
+      case 'candidate':
+        WebRTC.handleCandidate(data);
+        break;
+      case 'endCall':
+        WebRTC.closePeer(data.sender);
+        break;
+    }
   };
 }
 
@@ -78,6 +110,7 @@ document.getElementById("toggle-video-btn").addEventListener("click", (e) => {
 // Nút rời phòng
 document.getElementById("leave-btn").addEventListener("click", () => {
   if (ws) ws.close();
+  WebRTC.resetState();
   closeAllPeers();
   if (localStream) localStream.getTracks().forEach(t => t.stop());
   
@@ -89,6 +122,30 @@ document.getElementById("leave-btn").addEventListener("click", () => {
     
   callScreen.classList.remove("active");
   joinScreen.classList.add("active");
+});
+
+// Nút Start Group Call
+document.getElementById("start-call-btn").addEventListener("click", () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    alert('Chưa kết nối signaling server. Vui lòng vào phòng lại.');
+    return;
+  }
+
+  if (roomMembersList.length <= 1) {
+    alert('Chưa có người khác trong phòng để gọi.');
+    return;
+  }
+
+  console.log('Bắt đầu gọi với các thành viên:', roomMembersList);
+  WebRTC.startGroupCall(roomMembersList);
+});
+
+// Nút Hangup
+document.getElementById("hangup-btn").addEventListener("click", () => {
+  WebRTC.resetState();
+  if (ws) {
+    ws.send(JSON.stringify({ type: "endCall", roomId: currentRoom, sender: currentUser }));
+  }
 });
 
 // Thêm video remote vào màn hình
@@ -134,4 +191,9 @@ function uiSetStatus(remoteName, status, isSuccess = false) {
     badge.className = "status-badge"; 
     if (isSuccess) badge.classList.add("status-connected");
   }
+}
+
+// Cập nhật danh sách thành viên
+function updateRoomMembers() {
+  document.getElementById("members-count").textContent = roomMembersList.length;
 }
