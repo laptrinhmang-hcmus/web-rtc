@@ -29,12 +29,20 @@ const rooms = new Map();
 const app = express();
 app.use(express.static(PUBLIC_DIR));
 
+// Dynamic config từ environment (SIGNALING_URL, ...)
+app.get('/env.js', (req, res) => {
+  const signalingUrl = process.env.SIGNALING_URL || '';
+  res.type('application/javascript');
+  res.send(`window.SIGNALING_URL = ${signalingUrl ? JSON.stringify(signalingUrl) : 'undefined'};\n`);
+});
+
 let server;
 
+const FORCE_HTTP = process.env.FORCE_HTTP === '1' || process.env.FORCE_HTTP === 'true';
 const certPath = path.join(CERT_DIR, 'cert.pem');
 const keyPath  = path.join(CERT_DIR, 'key.pem');
 
-if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+if (!FORCE_HTTP && fs.existsSync(certPath) && fs.existsSync(keyPath)) {
   // Có cert → dùng HTTPS + WSS
   server = https.createServer(
     { cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) },
@@ -44,8 +52,12 @@ if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
 } else {
   // Chưa có cert → dùng HTTP + WS
   server = http.createServer(app);
-  console.log('[Server] Chế độ: HTTP + WS (chưa có cert, chạy trên localhost)');
-  console.log('[Server] Để tạo cert, chạy: bash gen-certs.sh (Linux/Mac) hoặc gen-certs.bat (Windows)');
+  if (FORCE_HTTP) {
+    console.log('[Server] Chế độ: HTTP (FORCE_HTTP=1) - đứng sau reverse proxy / ngrok');
+  } else {
+    console.log('[Server] Chế độ: HTTP + WS (chưa có cert)');
+    console.log('[Server] Để tạo cert, chạy: scripts/gen-certs.bat (Windows) hoặc scripts/gen-certs.sh (Linux/Mac)');
+  }
 }
 
 // Khởi tạo WebSocket Server
@@ -236,8 +248,28 @@ function handleLeaveRoom(ws, roomId, name) {
 }
 
 // Khởi động server
-server.listen(PORT, () => {
+const os = require('os');
+
+function getLocalIPs() {
+  const ips = [];
+  const nets = os.networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) {
+        ips.push(net.address);
+      }
+    }
+  }
+  return ips.length > 0 ? ips : ['localhost'];
+}
+
+server.listen(PORT, '0.0.0.0', () => {
   const protocol = server instanceof https.Server ? 'https' : 'http';
-  console.log(`\n✅ Server đang chạy tại ${protocol}://localhost:${PORT}`);
-  console.log(`   Mở trình duyệt: ${protocol}://localhost:${PORT}\n`);
+  const ips = getLocalIPs();
+  console.log(`\n✅ Server đang chạy:`);
+  console.log(`   Local:    ${protocol}://localhost:${PORT}`);
+  ips.forEach(ip => {
+    console.log(`   Network:  ${protocol}://${ip}:${PORT}`);
+  });
+  console.log('');
 });

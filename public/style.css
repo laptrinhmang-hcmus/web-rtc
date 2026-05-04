@@ -9,6 +9,7 @@ body {
   background-color: #121212;
   color: #ffffff;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   display: flex;
   justify-content: center;
@@ -140,6 +141,28 @@ body {
   color: white;
 }
 
+.room-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.call-status {
+  font-size: 13px;
+  color: #888;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 3px 10px;
+  border-radius: 12px;
+  white-space: nowrap;
+  transition: color 0.3s, background 0.3s;
+}
+
+.call-status.status-active {
+  color: #4facfe;
+  background: rgba(79, 172, 254, 0.15);
+}
+
 .member-count {
   font-size: 14px;
   color: #aaa;
@@ -150,13 +173,14 @@ body {
 /* === GRID VIDEO VÀ WRAPPER === */
 .video-grid {
   flex: 1;
+  min-height: 0;
   display: grid;
-  gap: 10px;
-  padding: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  align-content: center;
-  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   overflow-y: auto;
+  align-items: center;
+  justify-items: center;
 }
 
 .video-wrapper {
@@ -164,19 +188,16 @@ body {
   background: #222;
   border-radius: 8px;
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  aspect-ratio: 16/9;
+  width: 100%;
   max-width: 100%;
-  max-height: 70vh;
-  margin: 0 auto;
+  aspect-ratio: 16/9;
 }
 
 .video-wrapper video {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
 /* Badge tên */
@@ -214,6 +235,47 @@ body {
   background: rgba(220, 53, 69, 0.8); /* Màu đỏ: Kết nối thất bại */
 }
 
+/* === PLACEHOLDER CHO THÀNH VIÊN CHƯA GỌI === */
+.video-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #1e1e1e;
+  gap: 8px;
+}
+
+.video-placeholder .ph-avatar {
+  font-size: 36px;
+  opacity: 0.5;
+}
+
+.video-placeholder .ph-name {
+  color: #777;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.video-wrapper.pending {
+  background: #1e1e1e;
+}
+
+/* Overlay khi tắt camera */
+.cam-off-overlay {
+  position: absolute;
+  inset: 0;
+  background: #111;
+  color: #666;
+  font-size: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4;
+  pointer-events: none;
+}
+
 /* === ĐIỀU KHIỂN CUỘC GỌI === */
 .call-controls {
   background: #1a1a1a;
@@ -247,14 +309,14 @@ body {
   background: #d32f2f;
 }
 
-/* Nút cảnh báo - Dùng cho nút End Call */
+/* Nút cảnh báo - Dùng cho nút Rời phòng */
 .warning-btn {
-  background: #ffc107;
-  color: black;
+  background: #e67e22;
+  color: white;
 }
 
 .warning-btn:hover {
-  background: #e0a800;
+  background: #d35400;
 }
 
 
@@ -322,4 +384,72 @@ body {
   border-width: 5px;
   border-style: solid;
   border-color: #333 transparent transparent transparent;
+}
+
+/* === RESPONSIVE: MOBILE === */
+@media (max-width: 600px) {
+  .card {
+    padding: 24px;
+    max-width: 100%;
+    margin: 0 12px;
+  }
+
+  .call-header {
+    padding: 10px 12px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .room-info h2 {
+    font-size: 15px;
+  }
+
+  .call-status {
+    font-size: 11px;
+    padding: 2px 8px;
+  }
+
+  .member-count {
+    font-size: 12px;
+  }
+
+  .video-grid {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 6px;
+    padding: 6px;
+  }
+
+  .name-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    bottom: 6px;
+    left: 6px;
+  }
+
+  .status-badge {
+    font-size: 10px;
+    padding: 2px 5px;
+    top: 6px;
+    right: 6px;
+  }
+
+  .video-placeholder .ph-avatar {
+    font-size: 28px;
+  }
+
+  .video-placeholder .ph-name {
+    font-size: 12px;
+  }
+
+  .call-controls {
+    padding: 10px 6px;
+    gap: 6px;
+  }
+
+  .call-controls .btn {
+    padding: 8px 10px;
+    font-size: 13px;
+    border-radius: 24px;
+    gap: 4px;
+  }
 }

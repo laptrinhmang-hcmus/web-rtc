@@ -1,0 +1,25 @@
+services:
+  signaling:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - ./certs:/app/certs
+      - ./public/config.js:/app/public/config.js
+    environment:
+      - FORCE_HTTP=${FORCE_HTTP:-0}
+      - SIGNALING_URL=${SIGNALING_URL}
+    restart: unless-stopped
+
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    # network_mode: host chỉ hoạt động trên Linux (Docker Desktop Win/Mac không hỗ trợ)
+    network_mode: host
+    profiles:
+      - turn
+    environment:
+      - VPS_PUBLIC_IP=${VPS_PUBLIC_IP}
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: ["-c", "/etc/coturn/turnserver.conf", "--external-ip=${VPS_PUBLIC_IP}", "--no-cli"]

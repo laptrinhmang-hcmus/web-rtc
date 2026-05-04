@@ -1,3 +1,8 @@
 certs
 .env
 local
+node_modules
+dist
+DeBai.txt
+public/config.js
+AGENTS.md

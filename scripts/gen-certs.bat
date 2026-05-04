@@ -1,7 +1,7 @@
 @echo off
 :: 1. Tạo thư mục certs nếu chưa có
-if not exist "certs" mkdir certs
-cd certs
+if not exist "..\certs" mkdir ..\certs
+cd ..\certs
 
 :: 2. Kiểm tra xem lệnh openssl có tồn tại không
 where openssl >nul 2>nul

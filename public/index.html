@@ -3,8 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <title>WebRTC Group Call - Mesh</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=2" />
+  <script src="config.js?v=2" onerror="console.error('config.js failed to load; using fallback TURN config')"></script>
+  <script>
+    console.log('[DEBUG] TURN_CONFIG after load:', JSON.stringify(window.TURN_CONFIG));
+  </script>
 </head>
 <body>
   <div id="join-screen" class="screen active">
@@ -18,8 +23,7 @@
         <label>Mã phòng:</label>
         <input type="text" id="roomcode" placeholder="Nhập mã phòng..." />
       </div>
-      <button id="join-btn" class="btn primary-btn" style="width: 100%; margin-bottom: 10px;">Vào phòng (Cần Server)</button>
-      <button id="test-ui-btn" class="btn control-btn" style="width: 100%;">🧪 Test Giao Diện (Offline)</button>
+      <button id="join-btn" class="btn primary-btn" style="width: 100%;">Vào phòng</button>
     </div>
   </div>
 
@@ -27,27 +31,30 @@
     <header class="call-header">
       <div class="room-info">
         <h2>Phòng: <span id="current-room"></span></h2>
+        <span id="call-status" class="call-status">Đang chờ...</span>
       </div>
       <div class="member-count">Thành viên: <span id="members-count">0</span></div>
     </header>
-    
+
     <main id="video-grid" class="video-grid">
       <div class="video-wrapper local">
         <video id="local-video" autoplay playsinline muted></video>
+        <div class="cam-off-overlay" style="display:none">📸</div>
         <span class="name-badge">Bạn (Local)</span>
       </div>
     </main>
 
     <footer class="call-controls">
-      <button id="start-call-btn" class="btn primary-btn">📞 Bắt đầu gọi</button>
-      <button id="hangup-btn" class="btn danger-btn">📞 Kết thúc gọi</button>
-      <button id="toggle-audio-btn" class="btn control-btn">🎙️ Tắt Mic</button>
-      <button id="toggle-video-btn" class="btn control-btn">📷 Tắt Cam</button>
-      <button id="leave-btn" class="btn danger-btn">❌ Rời phòng</button>
+      <button id="start-call-btn" class="btn primary-btn" title="Bắt đầu gọi">📞 Gọi</button>
+      <button id="hangup-btn" class="btn danger-btn" title="Kết thúc cuộc gọi">✋ Dừng</button>
+      <button id="toggle-audio-btn" class="btn control-btn" title="Tắt/Bật Mic">🎙️ Mic</button>
+      <button id="toggle-video-btn" class="btn control-btn" title="Tắt/Bật Cam">📷 Cam</button>
+      <button id="leave-btn" class="btn warning-btn" title="Rời phòng">🚪 Rời</button>
     </footer>
   </div>
 
-  <script src="webrtc.js"></script>
-  <script src="ui.js"></script>
+  <script src="/env.js"></script>
+  <script src="webrtc.js?v=2"></script>
+  <script src="ui.js?v=2"></script>
 </body>
 </html>
