@@ -175,11 +175,11 @@ Nếu ICE chưa `connected` sau 20 giây, UI hiển thị "Đang kết nối..."
 
 ### 5.1 Test cùng LAN (P2P)
 
-**Cấu hình:** 2 laptop trên cùng WiFi.
+**Cấu hình:** 2 tab trình duyệt trên cùng WiFi.
 
 | Bước | Thao tác | Kết quả |
 |---|---|---|
-| 1 | Chạy server: `npm start` | Server in ra `https://192.168.1.101:3000` |
+| 1 | Chạy server: `npm start` | Server in ra `https://192.168.2.14:3000/` |
 | 2 | Máy A mở URL trên Chrome | Camera hoạt động, nhập tên "A" |
 | 3 | Máy B mở URL trên Chrome | Camera hoạt động, nhập tên "B" |
 | 4 | Cả hai nhập mã phòng "test1" | Thấy thành viên: 2 |
@@ -190,17 +190,24 @@ Nếu ICE chưa `connected` sau 20 giây, UI hiển thị "Đang kết nối..."
 
 ```
 [Stats] B: {
-  candidateType: "host",
-  connectionState: "connected",
-  iceConnectionState: "connected"
+  "candidateType": "host",
+  "connectionState": "connected",
+  "iceConnectionState": "connected",
+  "startTime": "2026-05-04T14:17:27.918Z",
+  "now": "2026-05-04T14:17:28.006Z"
 }
 ```
+
+![chayServer](./screenshot/ChayServer.png)
+
+![logTestCungMang](./screenshot/logTestCungMang.png)
+
 
 > **Nhận xét:** Trong cùng LAN, ICE chọn candidate type `host` (kết nối trực tiếp). Không cần TURN. Thời gian kết nối < 2 giây.
 
 ### 5.2 Test gọi nhóm 3 người (cùng LAN)
 
-**Cấu hình:** 3 tab trình duyệt trên cùng máy.
+**Cấu hình:** hoàn toàn tương tự như test với hai người nhưng với 3 tab trình duyệt trên cùng máy.
 
 | Bước | Kết quả |
 |---|---|
@@ -211,45 +218,124 @@ Nếu ICE chưa `connected` sau 20 giây, UI hiển thị "Đang kết nối..."
 
 ### 5.3 Test khác mạng / 4G (TURN relay)
 
-**Cấu hình:** Laptop A (WiFi nhà) + Điện thoại B (4G). Signaling server public qua VPS.
+**Cấu hình:** 2 máy Laptop A, B (WiFi Ký túc xá) + 1 Laptop C khác mạng. Signaling server public qua VPS.
 
 | Bước | Kết quả |
 |---|---|
-| Mở URL VPS trên laptop và điện thoại | Camera hoạt động |
-| Cả hai vào cùng phòng | Thấy thành viên: 2 |
+| Mở URL VPS các Laptop | Camera hoạt động |
+| Cả ba vào cùng phòng | Thấy thành viên: 3 |
 | Nhấn **📞 Gọi** | ICE negotiation bắt đầu |
-| Sau ~15 giây | Status → `Đã kết nối` |
+| Sau vài giây | Status → `Đã kết nối` |
 
-**Log console (Laptop A):**
+**Kết quả Log từ console của Laptop A:**
 
+Máy B:
 ```
-[Stats] ttt: {
-  candidateType: "relay",
-  connectionState: "connected",
-  iceConnectionState: "connected"
+[Stats] quy: {
+  "candidateType": "host",
+  "connectionState": "connected",
+  "iceConnectionState": "connected",
+  "startTime": "2026-05-04T14:24:21.673Z",
+  "now": "2026-05-04T14:24:21.986Z"
 }
 ```
 
-**Log console (Phone B):**
+Máy C:
 
 ```
-[Stats] thong: {
-  candidateType: "relay",
-  connectionState: "connected",
-  iceConnectionState: "connected"
+[Stats] 23120277: {
+  "candidateType": "srflx",
+  "connectionState": "connected",
+  "iceConnectionState": "connected",
+  "startTime": "2026-05-04T14:25:40.497Z",
+  "now": "2026-05-04T14:25:41.258Z"
 }
 ```
 
-> **Nhận xét:** Khi 2 client ở mạng khác nhau (NAT khác nhau), P2P thất bại. TURN relay trên VPS (port 3478) được sử dụng. Candidate type `relay` xác nhận media đi qua TURN server.
+```
+[Stats] 23120277: {
+  "candidateType": "relay",
+  "connectionState": "connected",
+  "iceConnectionState": "connected",
+  "startTime": "2026-05-04T14:25:40.497Z",
+  "now": "2026-05-04T14:25:41.258Z"
+}
+```
 
-### 5.4 Thờ gian kết nối trung bình
+> **Nhận xét:** Khi 2 client ở mạng khác nhau (NAT khác nhau), P2P thất bại. TURN relay trên VPS được sử dụng. Candidate type `relay` xác nhận media đi qua TURN server.
 
-| Kịch bản | Thời gian | Candidate type |
-|---|---|---|
-| Cùng LAN | < 2 giây | host |
-| Cùng LAN (3 người) | < 3 giây | host |
-| Khác mạng (P2P) | ~5 giây | srflx |
-| Khác mạng (TURN relay) | ~15 giây | relay |
+**Một số log của server:**
+
+```bash
+signaling-1  | [relay] candidate | thong → quy
+signaling-1  | [MSG] type=candidate thong
+signaling-1  | [relay] candidate | thong → quy
+coturn-1     | 4980: (12): INFO: IPv4. tcp or tls connected to: 14.186.75.156:56316
+coturn-1     | 4980: (12): INFO: IPv4. tcp or tls connected to: 14.186.75.156:56328
+coturn-1     | 4980: (12): INFO: IPv4. tcp or tls connected to: 14.186.75.156:56340
+signaling-1  | [MSG] type=answer quy
+signaling-1  | [relay] answer | quy → thong
+coturn-1     | 4980: (11): INFO: session 000000000000000131: realm <webrtc.local> user <>: incoming packet message processed, error 401: Unauthorized
+signaling-1  | [MSG] type=candidate quy
+signaling-1  | [relay] candidate | quy → thong
+signaling-1  | [MSG] type=candidate quy
+signaling-1  | [relay] candidate | quy → thong
+coturn-1     | 4980: (12): INFO: session 001000000000000107: TCP socket closed remotely 14.186.75.156:56340
+coturn-1     | 4980: (12): INFO: session 001000000000000107: usage: realm=<webrtc.local>, username=<>, rp=0, rb=0, sp=0, sb=0
+coturn-1     | 4980: (12): INFO: session 001000000000000107: peer usage: realm=<webrtc.local>, username=<>, rp=0, rb=0, sp=0, sb=0
+coturn-1     | 4980: (12): INFO: session 001000000000000107: closed (2nd stage), user <> realm <webrtc.local> origin <>, local 165.101.114.100:3478, remote 14.186.75.156:56340, reason: TCP connection closed by client (callback)
+coturn-1     | 4980: (11): INFO: IPv4. Local relay addr: 165.101.114.100:64512
+coturn-1     | 4980: (11): INFO: session 000000000000000131: new, realm=<webrtc.local>, username=<user>, lifetime=600
+coturn-1     | 4980: (11): DEBUG: Global turn allocation count incremented, now 10
+coturn-1     | 4980: (11): INFO: session 000000000000000131: realm <webrtc.local> user <user>: incoming packet ALLOCATE processed, success
+coturn-1     | 4980: (12): INFO: IPv4. tcp or tls connected to: 14.186.75.156:63298
+coturn-1     | 4980: (12): INFO: session 001000000000000108: realm <webrtc.local> user <>: incoming packet message processed, error 401: Unauthorized
+coturn-1     | 4980: (11): INFO: session 000000000000000132: realm <webrtc.local> user <>: incoming packet message processed, error 401: Unauthorized
+signaling-1  | [MSG] type=candidate quy
+signaling-1  | [relay] candidate | quy → thong
+signaling-1  | [MSG] type=candidate quy
+signaling-1  | [relay] candidate | quy → thong
+signaling-1  | [MSG] type=candidate quy
+signaling-1  | [relay] candidate | quy → thong
+coturn-1     | 4980: (11): INFO: session 000000000000000131: peer 192.168.56.1 lifetime updated: 300
+coturn-1     | 4980: (11): INFO: session 000000000000000131: realm <webrtc.local> user <user>: incoming packet CREATE_PERMISSION processed, success
+coturn-1     | 4980: (11): INFO: session 000000000000000131: peer 192.168.176.1 lifetime updated: 300
+coturn-1     | 4980: (11): INFO: session 000000000000000131: realm <webrtc.local> user <user>: incoming packet CREATE_PERMISSION processed, success
+coturn-1     | 4980: (11): INFO: session 000000000000000131: peer 192.168.44.1 lifetime updated: 300
+coturn-1     | 4980: (11): INFO: session 000000000000000131: realm <webrtc.local> user <user>: incoming packet CREATE_PERMISSION processed, success
+coturn-1     | 4980: (11): INFO: session 000000000000000131: peer 192.168.2.14 lifetime updated: 300
+coturn-1     | 4980: (11): INFO: session 000000000000000131: realm <webrtc.local> user <user>: incoming packet CREATE_PERMISSION processed, success
+coturn-1     | 4980: (11): INFO: IPv4. Local relay addr: 165.101.114.100:59901
+coturn-1     | 4980: (11): INFO: session 000000000000000132: new, realm=<webrtc.local>, username=<user>, lifetime=3600
+coturn-1     | 4980: (11): DEBUG: Global turn allocation count incremented, now 11
+coturn-1     | 4980: (11): INFO: session 000000000000000132: realm <webrtc.local> user <user>: incoming packet ALLOCATE processed, success
+coturn-1     | 4980: (12): INFO: IPv4. Local relay addr: 165.101.114.100:59253
+coturn-1     | 4980: (12): INFO: session 001000000000000108: new, realm=<webrtc.local>, username=<user>, lifetime=600
+coturn-1     | 4980: (12): DEBUG: Global turn allocation count incremented, now 12
+coturn-1     | 4980: (12): INFO: session 001000000000000108: realm <webrtc.local> user <user>: incoming packet ALLOCATE processed, success
+coturn-1     | 4980: (12): INFO: session 001000000000000108: peer 192.168.56.1 lifetime updated: 300
+coturn-1     | 4980: (12): INFO: session 001000000000000108: realm <webrtc.local> user <user>: incoming packet CREATE_PERMISSION processed, success
+coturn-1     | 4980: (12): INFO: session 001000000000000108: peer 192.168.176.1 lifetime updated: 300
+coturn-1     | 4980: (12): INFO: session 001000000000000108: realm <webrtc.local> user <user>: incoming packet CREATE_PERMISSION processed, success
+coturn-1     | 4980: (12): INFO: session 001000000000000108: peer 192.168.44.1 lifetime updated: 300
+coturn-1     | 4980: (12): INFO: session 001000000000000108: realm <webrtc.local> user <user>: incoming packet CREATE_PERMISSION processed, success
+coturn-1     | 4980: (12): INFO: session 001000000000000108: peer 192.168.2.14 lifetime updated: 300
+coturn-1     | 4980: (12): INFO: session 001000000000000108: realm <webrtc.local> user <user>: incoming packet CREATE_PERMISSION processed, success
+signaling-1  | [MSG] type=candidate thong
+signaling-1  | [relay] candidate | thong → quy
+signaling-1  | [MSG] type=candidate thong
+signaling-1  | [relay] candidate | thong → quy
+signaling-1  | [MSG] type=candidate quy
+signaling-1  | [relay] candidate | quy → thong
+coturn-1     | 4980: (12): INFO: session 001000000000000108: peer 14.186.75.156 lifetime updated: 300
+coturn-1     | 4980: (12): INFO: session 001000000000000108: realm <webrtc.local> user <user>: incoming packet CREATE_PERMISSION processed, success
+coturn-1     | 4980: (11): INFO: session 000000000000000131: peer 14.186.75.156 lifetime updated: 300
+coturn-1     | 4980: (11): INFO: session 000000000000000131: realm <webrtc.local> user <user>: incoming packet CREATE_PERMISSION processed, success
+coturn-1     | 4980: (12): INFO: session 001000000000000108: peer 165.101.114.100 lifetime updated: 300
+```
+
+
+![test3May](./screenshot/test3May.png)
 
 ---
 
@@ -260,7 +346,4 @@ Nếu ICE chưa `connected` sau 20 giây, UI hiển thị "Đang kết nối..."
 - **UI:** chưa có indicator băng thông/mất gói realtime. Có thể thêm WebRTC stats panel.
 - **Auth:** hiện tại chỉ dùng nickname, không xác thực. Có thể thêm JWT token.
 - **Recording:** chưa hỗ trợ ghi lại cuộc gọi. Có thể dùng MediaRecorder API.
-
----
-
-*Báo cáo được tạo cho môn học Mạng máy tính nâng cao.*
+- **Chưa hỗ trợ share màn hình**

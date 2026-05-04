@@ -29,12 +29,17 @@ Sao chép file `.env.example` thành `.env` và điều chỉnh:
 
 Chứng chỉ cho phép chạy server HTTPS + WSS (cần thiết cho camera/mic). Các script tạo chứng chỉ nằm  trong **scripts/**
 
+```bash
+cd scripts
+```
+
 | Hệ điều hành | Script |
 |---|---|
-| Windows (CMD) | `scripts\gen-certs.bat` |
-| Windows (PowerShell) | `powershell -ExecutionPolicy Bypass -File scripts\gen-certs.ps1` |
-| Linux / macOS | `bash scripts/gen-certs.sh` |
+| Windows (CMD) | `gen-certs.bat` |
+| Windows (PowerShell) | `powershell -ExecutionPolicy Bypass -File gen-certs.ps1` |
+| Linux / macOS | `bash gen-certs.sh` |
 
+Với các lỗi thiếu quyền ghi file có thể chạy bằng quyền admin, sudo,...
 Sau khi chạy, file `certs/cert.pem` và `certs/key.pem` sẽ được tạo.
 
 ## 5. Chạy signaling server
@@ -149,11 +154,3 @@ project/
 ├── package.json
 └── README.md
 ```
-
-## Công nghệ sử dụng
-
-- **Backend**: Node.js, Express (phục vụ file tĩnh), ws (WebSocket signaling)
-- **Frontend**: HTML/CSS/JS thuần
-- **WebRTC**: API trình duyệt (`getUserMedia`, `RTCPeerConnection`)
-- **TURN**: coturn (Docker)
-- **Chứng chỉ**: OpenSSL
