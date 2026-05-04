@@ -2,43 +2,23 @@ let ws = null;
 let currentUser = "";
 let currentRoom = "";
 let roomMembersList = [];
+let callActive = false;
 
 const joinScreen = document.getElementById("join-screen");
 const callScreen = document.getElementById("call-screen");
 
-// Nút test giao diện khi không có server
-document.getElementById("test-ui-btn").addEventListener("click", async () => {
-  // 1. Xin quyền Camera/Mic
-  const hasMedia = await initLocalMedia();
-  if (!hasMedia) return;
-  
-  // 2. Cập nhật giao diện
-  document.getElementById("current-room").textContent = "Phòng Test";
-  joinScreen.classList.remove("active");
-  callScreen.classList.add("active");
-  
-  // 3. Giả lập có người khác trong phòng (Test grid)
-  uiAddRemoteVideo("Người dùng ảo A", null); 
-  uiSetStatus("Người dùng ảo A", "connected", true);
-  document.getElementById("members-count").textContent = "2";
-});
-
-// Nút vào phòng
 document.getElementById("join-btn").addEventListener("click", async () => {
   currentUser = document.getElementById("username").value.trim();
   currentRoom = document.getElementById("roomcode").value.trim();
   if (!currentUser || !currentRoom) return alert("Vui lòng nhập đầy đủ!");
 
-  // 1. Xin quyền Camera/Mic trước khi mở WebSocket
   const hasMedia = await initLocalMedia();
-  if (!hasMedia) return; 
+  if (!hasMedia) return;
 
-  // Set local stream and room/user info for WebRTC
   WebRTC.setLocalStream(localStream);
   WebRTC.setLocalName(currentUser);
   WebRTC.setRoomId(currentRoom);
 
-  // 2. Chuyển UI và mở WebSocket
   document.getElementById("current-room").textContent = currentRoom;
   joinScreen.classList.remove("active");
   callScreen.classList.add("active");
@@ -46,9 +26,13 @@ document.getElementById("join-btn").addEventListener("click", async () => {
   initWebSocket();
 });
 
+// ===== WEBSOCKET =====
 function initWebSocket() {
-  const wsUrl = (window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + window.location.host;
-  ws = new WebSocket(wsUrl); 
+  let wsUrl = window.SIGNALING_URL;
+  if (!wsUrl) {
+    wsUrl = (window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + window.location.host;
+  }
+  ws = new WebSocket(wsUrl);
   WebRTC.setSignalingSocket(ws);
 
   ws.onopen = () => {
@@ -58,17 +42,17 @@ function initWebSocket() {
 
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
-    console.log("Nhận từ Server:", data);
 
     switch (data.type) {
       case 'roomMembers':
         roomMembersList = data.members;
-        updateRoomMembers();
+        updateMemberTiles();
         break;
       case 'memberLeft':
         WebRTC.closePeer(data.name);
+        removeMemberTile(data.name);
         roomMembersList = roomMembersList.filter(name => name !== data.name);
-        updateRoomMembers();
+        document.getElementById("members-count").textContent = roomMembersList.length;
         break;
       case 'offer':
         WebRTC.handleOffer(data);
@@ -81,119 +65,219 @@ function initWebSocket() {
         break;
       case 'endCall':
         WebRTC.closePeer(data.sender);
+        detachStream(data.sender);
         break;
     }
   };
 }
 
-// Bật/Tắt mic
-document.getElementById("toggle-audio-btn").addEventListener("click", (e) => {
+// ===== CALL STATUS =====
+function setCallStatus(text) {
+  const el = document.getElementById("call-status");
+  if (el) {
+    el.textContent = text;
+    el.className = "call-status";
+    if (text !== "Đang chờ...") el.classList.add("status-active");
+  }
+}
+
+// ===== MEMBER TILES =====
+function updateMemberTiles() {
+  const grid = document.getElementById("video-grid");
+  const remoteNames = roomMembersList.filter(name => name !== currentUser);
+
+  grid.querySelectorAll(".video-wrapper.remote").forEach(w => {
+    const memberName = w.id.replace("wrapper-", "");
+    if (!remoteNames.includes(memberName)) {
+      w.remove();
+    }
+  });
+
+  remoteNames.forEach(name => {
+    if (!document.getElementById(`wrapper-${name}`)) {
+      createMemberTile(name);
+    }
+  });
+
+  document.getElementById("members-count").textContent = roomMembersList.length;
+}
+
+function createMemberTile(remoteName) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "video-wrapper remote pending";
+  wrapper.id = `wrapper-${remoteName}`;
+
+  const placeholder = document.createElement("div");
+  placeholder.className = "video-placeholder";
+  placeholder.innerHTML = `<span class="ph-avatar">👤</span><span class="ph-name">${remoteName}</span>`;
+
+  const statusBadge = document.createElement("span");
+  statusBadge.className = "status-badge";
+  statusBadge.id = `status-${remoteName}`;
+  statusBadge.textContent = "Sẵn sàng";
+
+  wrapper.appendChild(placeholder);
+  wrapper.appendChild(statusBadge);
+  document.getElementById("video-grid").appendChild(wrapper);
+}
+
+function uiAddRemoteVideo(remoteName, stream) {
+  if (!stream || !stream.active) return;
+
+  let wrapper = document.getElementById(`wrapper-${remoteName}`);
+  if (!wrapper) {
+    if (!roomMembersList.includes(remoteName)) return;
+    wrapper = document.createElement("div");
+    wrapper.className = "video-wrapper remote";
+    wrapper.id = `wrapper-${remoteName}`;
+    document.getElementById("video-grid").appendChild(wrapper);
+  }
+
+  const placeholder = wrapper.querySelector(".video-placeholder");
+  if (placeholder) placeholder.remove();
+
+  let video = wrapper.querySelector("video");
+  if (!video) {
+    video = document.createElement("video");
+    video.id = `video-${remoteName}`;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = false;
+    wrapper.appendChild(video);
+  }
+  video.srcObject = stream;
+  video.play().catch(() => {});
+  wrapper.classList.remove("pending");
+
+  if (!wrapper.querySelector(".name-badge")) {
+    const nameBadge = document.createElement("span");
+    nameBadge.className = "name-badge";
+    nameBadge.textContent = remoteName;
+    wrapper.appendChild(nameBadge);
+  }
+
+  let badge = wrapper.querySelector(".status-badge");
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.className = "status-badge";
+    badge.id = `status-${remoteName}`;
+    wrapper.appendChild(badge);
+  }
+  badge.textContent = "Đã kết nối";
+  badge.className = "status-badge status-connected";
+}
+
+function detachStream(remoteName) {
+  const wrapper = document.getElementById(`wrapper-${remoteName}`);
+  if (!wrapper) return;
+
+  const video = wrapper.querySelector("video");
+  if (video) {
+    video.srcObject = null;
+    video.remove();
+  }
+
+  const nameBadge = wrapper.querySelector(".name-badge");
+  if (nameBadge) nameBadge.remove();
+
+  if (!wrapper.querySelector(".video-placeholder")) {
+    const placeholder = document.createElement("div");
+    placeholder.className = "video-placeholder";
+    placeholder.innerHTML = `<span class="ph-avatar">👤</span><span class="ph-name">${remoteName}</span>`;
+    wrapper.insertBefore(placeholder, wrapper.firstChild);
+  }
+  wrapper.classList.add("pending");
+  uiSetStatus(remoteName, "Sẵn sàng");
+}
+
+function removeMemberTile(remoteName) {
+  const wrapper = document.getElementById(`wrapper-${remoteName}`);
+  if (wrapper) wrapper.remove();
+}
+
+// ===== STATUS BADGE =====
+function uiSetStatus(remoteName, status, isSuccess = false) {
+  const badge = document.getElementById(`status-${remoteName}`);
+  if (badge) {
+    badge.textContent = status;
+    badge.className = "status-badge";
+    if (isSuccess) badge.classList.add("status-connected");
+    if (status === "failed") badge.classList.add("status-failed");
+  }
+}
+
+// ===== TOGGLE MIC/CAM =====
+document.getElementById("toggle-audio-btn").addEventListener("click", function() {
   if (!localStream) return;
   const track = localStream.getAudioTracks()[0];
   if (track) {
     track.enabled = !track.enabled;
-    e.target.innerHTML = track.enabled ? "🎙️ Tắt Mic" : "🎙️ Bật Mic";
+    this.innerHTML = track.enabled ? "🎙️ Mic" : "🔇 Mic";
   }
 });
 
-// Bật/Tắt cam
-document.getElementById("toggle-video-btn").addEventListener("click", (e) => {
+document.getElementById("toggle-video-btn").addEventListener("click", function() {
   if (!localStream) return;
   const track = localStream.getVideoTracks()[0];
   if (track) {
     track.enabled = !track.enabled;
-    e.target.innerHTML = track.enabled ? "📷 Tắt Cam" : "📷 Bật Cam";
+    this.innerHTML = track.enabled ? "📷 Cam" : "📸 Cam";
+    const overlay = document.querySelector(".local .cam-off-overlay");
+    if (overlay) overlay.style.display = track.enabled ? "none" : "flex";
   }
 });
 
-
-// Nút rời phòng
+// ===== LEAVE ROOM =====
 document.getElementById("leave-btn").addEventListener("click", () => {
   if (ws) ws.close();
   WebRTC.resetState();
-  closeAllPeers();
   if (localStream) localStream.getTracks().forEach(t => t.stop());
-  
-  document.getElementById("video-grid").innerHTML = `
-    <div class="video-wrapper local">
-      <video id="local-video" autoplay playsinline muted></video>
-      <span class="name-badge">Bạn (Local)</span>
-    </div>`;
-    
+  callActive = false;
+
+  const grid = document.getElementById("video-grid");
+  grid.querySelectorAll(".video-wrapper.remote").forEach(w => w.remove());
+
   callScreen.classList.remove("active");
   joinScreen.classList.add("active");
 });
 
-// Nút Start Group Call
+// ===== START CALL =====
 document.getElementById("start-call-btn").addEventListener("click", () => {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
-    alert('Chưa kết nối signaling server. Vui lòng vào phòng lại.');
+    alert("Chưa kết nối signaling server. Vui lòng vào phòng lại.");
     return;
   }
-
   if (roomMembersList.length <= 1) {
-    alert('Chưa có người khác trong phòng để gọi.');
+    alert("Chưa có người khác trong phòng để gọi.");
     return;
   }
 
-  console.log('Bắt đầu gọi với các thành viên:', roomMembersList);
+  callActive = true;
+  setCallStatus("Đang gọi...");
+
+  roomMembersList.forEach(name => {
+    if (name !== currentUser) {
+      uiSetStatus(name, "Đang kết nối...");
+    }
+  });
+
   WebRTC.startGroupCall(roomMembersList);
 });
 
-// Nút Hangup
+// ===== HANGUP =====
 document.getElementById("hangup-btn").addEventListener("click", () => {
+  if (!callActive) return;
+  callActive = false;
+  setCallStatus("Đang chờ...");
+
+  roomMembersList.forEach(name => {
+    if (name !== currentUser) {
+      detachStream(name);
+    }
+  });
+
   WebRTC.resetState();
   if (ws) {
     ws.send(JSON.stringify({ type: "endCall", roomId: currentRoom, sender: currentUser }));
   }
 });
-
-// Thêm video remote vào màn hình
-function uiAddRemoteVideo(remoteName, stream) {
-  if (document.getElementById(`video-${remoteName}`)) return;
-
-  const wrapper = document.createElement("div");
-  wrapper.className = "video-wrapper remote";
-  wrapper.id = `wrapper-${remoteName}`;
-
-  const video = document.createElement("video");
-  video.id = `video-${remoteName}`;
-  video.autoplay = true;
-  video.playsInline = true;
-  
-  if (stream) {
-    video.srcObject = stream;
-  } else {
-    // Nếu là test mode (không có stream), để nền xám giả lập
-    video.style.backgroundColor = "#444"; 
-  }
-
-  const nameBadge = document.createElement("span");
-  nameBadge.className = "name-badge";
-  nameBadge.textContent = remoteName;
-
-  const statusBadge = document.createElement("span");
-  statusBadge.className = "status-badge";
-  statusBadge.id = `status-${remoteName}`;
-  statusBadge.textContent = "connecting";
-
-  wrapper.appendChild(video);
-  wrapper.appendChild(nameBadge);
-  wrapper.appendChild(statusBadge);
-  document.getElementById("video-grid").appendChild(wrapper);
-}
-
-// Cập nhật trạng thái kết nối của remote
-function uiSetStatus(remoteName, status, isSuccess = false) {
-  const badge = document.getElementById(`status-${remoteName}`);
-  if (badge) {
-    badge.textContent = status;
-    badge.className = "status-badge"; 
-    if (isSuccess) badge.classList.add("status-connected");
-  }
-}
-
-// Cập nhật danh sách thành viên
-function updateRoomMembers() {
-  document.getElementById("members-count").textContent = roomMembersList.length;
-}

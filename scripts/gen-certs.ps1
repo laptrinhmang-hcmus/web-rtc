@@ -1,5 +1,5 @@
-# 1. Định nghĩa thư mục lưu trữ
-$CertDir = "certs"
+# 1. Định nghĩa thư mục lưu trữ (tương đối từ thư mục scripts/)
+$CertDir = "..\certs"
 
 # 2. Tạo thư mục certs nếu chưa tồn tại
 if (-not (Test-Path -Path $CertDir)) {

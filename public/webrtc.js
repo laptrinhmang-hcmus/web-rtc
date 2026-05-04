@@ -1,19 +1,31 @@
-// WebRTC Core & Mesh Logic
-
 // State Client
 const peerConnections = new Map(); // Key: remoteName | Value: RTCPeerConnection
 let callStartTime = null;
 
 function getIceServers() {
-  const host = window.location.hostname;
-  return {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: `turn:${host}:3478?transport=udp`, username: 'user', credential: 'password' },
-      { urls: `turn:${host}:3478?transport=tcp`, username: 'user', credential: 'password' },
-      { urls: `turns:${host}:5349?transport=tcp`, username: 'user', credential: 'password' }
-    ]
-  };
+  let config;
+  if (window.TURN_CONFIG && window.TURN_CONFIG.iceServers) {
+    config = { iceServers: window.TURN_CONFIG.iceServers };
+  } else {
+    const host = window.location.hostname;
+    const turnUser = (window.TURN_CONFIG && window.TURN_CONFIG.username) || 'user';
+    const turnCred = (window.TURN_CONFIG && window.TURN_CONFIG.credential) || 'password';
+    const tcpPort  = (window.TURN_CONFIG && window.TURN_CONFIG.tcpPort)  || 3478;
+    const udpPort  = (window.TURN_CONFIG && window.TURN_CONFIG.udpPort)  || 3478;
+    const tlsPort  = (window.TURN_CONFIG && window.TURN_CONFIG.tlsPort)  || 5349;
+
+    config = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: `turn:${host}:${udpPort}?transport=udp`, username: turnUser, credential: turnCred },
+        { urls: `turn:${host}:${tcpPort}?transport=tcp`, username: turnUser, credential: turnCred },
+        { urls: `turns:${host}:${tlsPort}?transport=tcp`, username: turnUser, credential: turnCred }
+      ]
+    };
+  }
+
+  config.iceCandidatePoolSize = 10;
+  return config;
 }
 
 // Biến lưu local stream, roomId và tên local
@@ -21,7 +33,6 @@ let localStream = null;
 let currentRoomId = null;
 let currentUserName = null;
 
-// Function to set local stream
 function setLocalStream(stream) {
   localStream = stream;
 }
@@ -64,26 +75,16 @@ function setSignalingSocket(ws) {
 function sendMessage(msg) {
   if (signalingSocket && signalingSocket.readyState === WebSocket.OPEN) {
     signalingSocket.send(JSON.stringify(msg));
-  } else {
-    console.warn('WebSocket signaling chưa sẵn sàng:', msg);
   }
 }
 
 // Logic Mesh (Gọi nhóm)
 async function startGroupCall(roomMembers) {
-  if (!currentUserName || !currentRoomId) {
-    console.warn('startGroupCall aborted: missing currentUserName or currentRoomId', { currentUserName, currentRoomId });
-    return;
-  }
-
-  if (!roomMembers || roomMembers.length <= 1) {
-    console.warn('Không có peer để gọi. roomMembers:', roomMembers);
-    return;
-  }
+  if (!currentUserName || !currentRoomId) return;
+  if (!roomMembers || roomMembers.length <= 1) return;
 
   callStartTime = new Date();
   const membersToCall = roomMembers.filter(name => name !== currentUserName);
-  console.log('Bắt đầu gọi nhóm', { currentUserName, currentRoomId, membersToCall });
 
   for (const remoteName of membersToCall) {
     await createPeerConnection(remoteName);
@@ -91,9 +92,17 @@ async function startGroupCall(roomMembers) {
 }
 
 async function createPeerConnection(remoteName) {
+  const existingPc = peerConnections.get(remoteName);
+  if (existingPc) {
+    if (existingPc.isCallee && remoteName < currentUserName) return;
+    clearTimeout(existingPc.fallbackTimer);
+    existingPc.close();
+    peerConnections.delete(remoteName);
+  }
+
   const iceConfig = getIceServers();
-  console.log('Tạo RTCPeerConnection cho', remoteName, iceConfig);
   const pc = new RTCPeerConnection(iceConfig);
+  pc.isCaller = true;
   peerConnections.set(remoteName, pc);
 
   // Add local tracks
@@ -103,13 +112,16 @@ async function createPeerConnection(remoteName) {
 
   // Handlers
   pc.onicecandidate = (event) => {
-    if (event.candidate) {
+    if (event.candidate && peerConnections.get(remoteName) === pc) {
       sendCandidate(remoteName, event.candidate);
     }
   };
 
   pc.ontrack = (event) => {
-    uiAddRemoteVideo(remoteName, event.streams[0]);
+    const stream = event.streams[0];
+    if (stream) {
+      uiAddRemoteVideo(remoteName, stream);
+    }
   };
 
   pc.oniceconnectionstatechange = () => {
@@ -119,13 +131,16 @@ async function createPeerConnection(remoteName) {
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === 'connected') {
       logStats(pc, remoteName);
+    } else if (pc.connectionState === 'failed') {
+      clearTimeout(pc.fallbackTimer);
+      pc.close();
+      peerConnections.delete(remoteName);
     }
   };
 
   // Create offer
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  console.log('Gửi offer tới', remoteName, { roomId: currentRoomId, sender: currentUserName });
   sendMessage({
     type: 'offer',
     roomId: currentRoomId,
@@ -137,10 +152,9 @@ async function createPeerConnection(remoteName) {
   // ICE Fallback timer
   const fallbackTimer = setTimeout(() => {
     if (!['connected', 'completed'].includes(pc.iceConnectionState)) {
-      console.warn(`[${remoteName}] P2P failed, trying TURN...`, pc.iceConnectionState, 'remoteName:', remoteName);
       uiSetStatus(remoteName, 'connecting');
     }
-  }, 12000);
+  }, 20000);
 
   pc.fallbackTimer = fallbackTimer;
 }
@@ -150,22 +164,40 @@ function handleIceStateChange(pc, remoteName) {
     clearTimeout(pc.fallbackTimer);
     uiSetStatus(remoteName, 'connected', true);
   } else if (pc.iceConnectionState === 'failed') {
+    clearTimeout(pc.fallbackTimer);
     uiSetStatus(remoteName, 'failed');
+    try {
+      if (typeof pc.restartIce === 'function') {
+        pc.restartIce();
+      }
+    } catch (e) {
+      console.error(`[${remoteName}] ICE restart error:`, e);
+    }
   }
 }
 
 // Handle incoming offer
 async function handleOffer(data) {
   const { sender, offer } = data;
+
+  const existingPc = peerConnections.get(sender);
+  if (existingPc) {
+    if (existingPc.isCaller && currentUserName < sender) return;
+    clearTimeout(existingPc.fallbackTimer);
+    existingPc.close();
+  }
+
   const pc = new RTCPeerConnection(getIceServers());
+  pc.isCallee = true;
   peerConnections.set(sender, pc);
+
+  if (!callStartTime) callStartTime = new Date();
 
   // Add local tracks
   if (localStream) {
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
   }
 
-  // Handlers (similar to createPeerConnection)
   pc.onicecandidate = (event) => {
     if (event.candidate) {
       sendCandidate(sender, event.candidate);
@@ -173,7 +205,8 @@ async function handleOffer(data) {
   };
 
   pc.ontrack = (event) => {
-    uiAddRemoteVideo(sender, event.streams[0]);
+    const stream = event.streams[0];
+    if (stream) uiAddRemoteVideo(sender, stream);
   };
 
   pc.oniceconnectionstatechange = () => {
@@ -183,6 +216,10 @@ async function handleOffer(data) {
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === 'connected') {
       logStats(pc, sender);
+    } else if (pc.connectionState === 'failed') {
+      clearTimeout(pc.fallbackTimer);
+      pc.close();
+      peerConnections.delete(sender);
     }
   };
 
@@ -197,13 +234,11 @@ async function handleOffer(data) {
     answer: answer
   });
 
-  // ICE Fallback timer
   const fallbackTimer = setTimeout(() => {
     if (!['connected', 'completed'].includes(pc.iceConnectionState)) {
-      console.warn(`[${sender}] P2P failed, trying TURN...`);
       uiSetStatus(sender, 'connecting');
     }
-  }, 12000);
+  }, 20000);
 
   pc.fallbackTimer = fallbackTimer;
 }
@@ -211,24 +246,26 @@ async function handleOffer(data) {
 // Handle incoming answer
 async function handleAnswer(data) {
   const { sender, answer } = data;
-  console.log('Nhận answer từ', sender, data);
   const pc = peerConnections.get(sender);
   if (pc) {
     await pc.setRemoteDescription(new RTCSessionDescription(answer));
-  } else {
-    console.warn('Không tìm thấy PeerConnection cho answer từ', sender);
   }
 }
 
 // Handle incoming candidate
 async function handleCandidate(data) {
   const { sender, candidate } = data;
-  console.log('Nhận candidate từ', sender, candidate);
   const pc = peerConnections.get(sender);
   if (pc) {
-    await pc.addIceCandidate(new RTCIceCandidate(candidate));
-  } else {
-    console.warn('Không tìm thấy PeerConnection cho candidate từ', sender);
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (e) {
+      if (e.name === 'InvalidStateError' || String(e).includes('Unknown ufrag')) {
+        // Bỏ qua candidate cũ khi PC đã được thay thế
+      } else {
+        console.error('Lỗi addIceCandidate từ', sender, e);
+      }
+    }
   }
 }
 
@@ -249,7 +286,7 @@ async function logStats(pc, remoteName) {
     if (report.type === 'candidate-pair' && report.state === 'succeeded') {
       const local = stats.get(report.localCandidateId);
       console.log(`[Stats] ${remoteName}:`, {
-        candidateType: local?.candidateType, // host | srflx | relay
+        candidateType: local?.candidateType,
         connectionState: pc.connectionState,
         iceConnectionState: pc.iceConnectionState,
         startTime: callStartTime,
@@ -266,10 +303,6 @@ function closePeer(remoteName) {
     pc.close();
     peerConnections.delete(remoteName);
     clearTimeout(pc.fallbackTimer);
-  }
-  const wrapper = document.getElementById(`wrapper-${remoteName}`);
-  if (wrapper) {
-    wrapper.remove();
   }
 }
 
